@@ -7,11 +7,28 @@ Estimate risk factors for postoperative acute kidney injury (AKI) and measure it
 ## Folder structure
 
 ```text
-R/                    Data preparation, summaries, and models
-data/sample.xlsx      Synthetic 96-row test fixture
-scripts/              Dependency installation
-tests/                Pipeline checks
-run_all.R             Command-line entry point
+postop-aki/
+├── .github/
+│   └── workflows/
+│       └── smoke-test.yml          # Install packages, test, and run the sample in CI
+├── R/
+│   ├── 01_data.R                   # Read, validate, and derive analysis variables
+│   ├── 02_summaries.R              # Build counts, baseline tables, and LOS summaries
+│   ├── 03_models.R                 # Fit AKI, mortality, landmark, and ICU models
+│   └── 04_output.R                 # Validate sample IDs and write result metadata
+├── data/
+│   ├── data_dictionary.csv         # Define input columns and accepted aliases
+│   └── sample.xlsx                 # Provide the synthetic 96-row test fixture
+├── scripts/
+│   └── install_dependencies.R      # Install pinned R packages
+├── tests/
+│   └── test_pipeline.R             # Check fixture values, endpoints, and R syntax
+├── .env.example                    # Show full-data input and output settings
+├── .gitattributes                  # Enforce text and line-ending rules
+├── .gitignore                      # Exclude protected inputs and generated files
+├── DESCRIPTION                     # Pin R and direct package versions
+├── README.md                       # Explain the project and commands
+└── run_all.R                       # Run the analysis from the command line
 ```
 
 ## Code structure
