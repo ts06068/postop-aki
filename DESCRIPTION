@@ -1,0 +1,17 @@
+Package: postopaki
+Type: Project
+Title: Analysis of Postoperative Acute Kidney Injury
+Version: 1.0.0
+Authors@R: person("Younwoo", "Ki", role = c("aut", "cre"), email = "ts06067@yuhs.ac")
+Description: Cohort derivation, descriptive statistics, risk-factor
+    models, time-varying survival models, landmark analyses, and competing-risk
+    analyses for the postoperative acute kidney injury study.
+License: Proprietary
+Encoding: UTF-8
+Depends:
+    R (== 4.4.3)
+Imports:
+    cmprsk (== 2.2-12),
+    data.table (== 1.17.8),
+    readxl (== 1.4.5),
+    survival (== 3.8-3)

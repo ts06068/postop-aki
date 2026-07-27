@@ -1,0 +1,35 @@
+name,type,required,accepted_legacy_name,description
+hospital_code,character,yes,HospitalCode,Hospital stratum identifier
+patient_id,character,yes,PID,Record identifier
+operation_date,date,yes,OperationDate,Date of index operation
+cardiac_surgery,integer,yes,CardiacSurgery,One for cardiac surgery
+icd9cm_code,character,no,ICD9CMCode,Procedure code used to derive surgical specialty
+age,numeric,yes,Age,Age in years
+sex_male,integer,yes,Sex,One for male sex
+bmi,numeric,yes,BMI,Body mass index in kg/m2
+asa_class,numeric,yes,ASAClassCode,ASA physical-status class
+nsaid,integer,yes,NSAIDS,Preoperative NSAID exposure
+rasb,integer,yes,ARB,Preoperative renin-angiotensin system blocker exposure
+asthma,integer,yes,Asthma,Asthma indicator
+cva,integer,yes,CVA,Cerebrovascular accident indicator
+diabetes,integer,yes,DM,Diabetes mellitus indicator
+hepatitis,integer,yes,Hepatitis,Hepatitis indicator
+hypertension,integer,yes,Hypertension,Hypertension indicator
+neurologic_disease,integer,yes,NeurologicDisease,Neurologic disease indicator
+pulmonary_tuberculosis,integer,yes,PulTbc,Pulmonary tuberculosis indicator
+malignancy,integer,yes,Malignancy,Malignancy indicator
+egfr,numeric,yes,eGFR,Baseline estimated glomerular filtration rate
+systolic_bp,numeric,no,SBP,Baseline systolic blood pressure
+diastolic_bp,numeric,no,DBP,Baseline diastolic blood pressure
+operation_duration_hours,numeric,yes,Duration,Operation duration in hours
+urgent_surgery,integer,yes,Urgency,Urgent-surgery indicator
+packed_rbc,numeric,yes,BloodpRBC or Blood-pRBC_merged,Intraoperative packed red-cell amount or indicator
+time_below_map65_minutes,numeric,yes,TimeBelow65,Time with mean arterial pressure below 65 mmHg
+aki_stage,integer,yes,AKIStage,KDIGO AKI stage; legacy KRT code 4 is folded into stage 3
+aki,integer,yes,AKI_binary,Any postoperative AKI indicator
+time_to_death_days,numeric,yes,TimeToDeath,Death or censoring time from operation in days
+death,integer,yes,DeathStatus,All-cause death indicator
+time_to_icu_days,numeric,yes,TimeToICU,ICU admission or censoring time from operation in days
+icu_admission,integer,yes,ICUStatus,ICU admission indicator
+total_los_days,numeric,yes,LOS,Total hospital length of stay in days
+postoperative_los_days,numeric,yes,Op-Out,Postoperative length of stay in days

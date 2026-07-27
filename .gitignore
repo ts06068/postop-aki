@@ -1,0 +1,26 @@
+.env
+.Rhistory
+.RData
+.Rproj.user/
+renv/library/
+renv/staging/
+
+# Source data and generated analysis artefacts
+data/raw/**
+data/private/**
+outputs/
+*.xlsx
+*.xls
+*.parquet
+*.rds
+*.rda
+
+# CSV files are ignored except for the input schema.
+*.csv
+!data/data_dictionary.csv
+!data/sample.xlsx
+
+# Local editor and operating-system files
+.DS_Store
+Thumbs.db
+*.log
