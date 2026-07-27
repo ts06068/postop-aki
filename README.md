@@ -2,45 +2,52 @@
 
 ## Study Objective
 
-Analyze risk factors and postoperative outcomes associated with acute kidney injury after cardiac and non-cardiac surgery.
+Estimate risk factors for postoperative acute kidney injury (AKI) and measure its association with mortality, ICU admission, and length of stay after cardiac and non-cardiac surgery.
 
 ## Folder structure
 
 ```text
-R/                    Analysis functions
-data/sample.xlsx      Synthetic sample data
-scripts/              Dependency setup
-tests/                Smoke test
-run_all.R             Analysis entry point
+R/                    Data preparation, summaries, and models
+data/sample.xlsx      Synthetic 96-row test fixture
+scripts/              Dependency installation
+tests/                Pipeline checks
+run_all.R             Command-line entry point
 ```
 
 ## Code structure
 
-`run_all.R` loads the numbered modules in order and runs the pipeline.
+`run_all.R` is the entry point. It loads the numbered modules in order.
 
-- `R/01_data.R`: reads, validates, and derives analysis variables.
-- `R/02_summaries.R`: creates cohort, baseline, and length-of-stay summaries.
-- `R/03_models.R`: fits AKI risk, mortality, landmark, and competing-risk models.
-- `R/04_output.R`: checks sample input and writes results with run metadata.
-- `scripts/install_dependencies.R` and `tests/test_pipeline.R`: set up packages and run the smoke test.
+- `R/01_data.R`: read files, normalize columns, reject invalid input, and derive model variables.
+- `R/02_summaries.R`: write cohort counts, baseline tables, and length-of-stay summaries.
+- `R/03_models.R`: fit logistic, extended Cox, landmark Cox, and Fine-Gray models.
+- `R/04_output.R`: enforce synthetic sample IDs and write tables with run metadata.
+- `scripts/install_dependencies.R`: install the exact direct dependencies in `DESCRIPTION`.
+- `tests/test_pipeline.R`: check the sample fixture, derived fields, endpoint coding, and R syntax.
 
 ## Environment
 
-- R 4.4.3
-- Package versions are defined in `DESCRIPTION`.
-- Input is file-based; no database connection is required.
+- Use R 4.4.3. Exact direct dependency versions are in `DESCRIPTION`.
+- The installer uses a fixed CRAN snapshot.
+- There is no database client. Full mode reads an analysis-ready file.
+- `data/sample.xlsx` is synthetic. Keep protected extracts out of Git.
 
 ## How to run
 
 ```powershell
 Rscript scripts/install_dependencies.R
-Rscript run_all.R --mode=sample
 Rscript tests/test_pipeline.R
+Rscript run_all.R --mode=sample
 ```
 
-For a full dataset:
+Sample results go to `outputs/sample/`.
+
+Full mode requires an external extract. Set its path explicitly:
 
 ```powershell
 $env:POSTOP_AKI_DATA_PATH = "D:\data\analysis_dataset.xlsx"
+$env:POSTOP_AKI_OUTPUT_DIR = "outputs\full"
 Rscript run_all.R --mode=full
 ```
+
+Full mode accepts XLSX, XLS, CSV, and pipe-delimited text files.

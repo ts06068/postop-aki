@@ -1,4 +1,4 @@
-# Input schema, validation, and derived analysis variables shared by all models.
+# Input loading, schema checks, and derived variables.
 `%||%` <- function(x, y) {
   if (is.null(x) || length(x) == 0L || identical(x, "")) y else x
 }
@@ -18,7 +18,7 @@ assert_packages <- function(packages = required_packages()) {
   }
 }
 
-# Map historical export names to the standard analysis schema.
+# Current column names and accepted old aliases.
 legacy_column_candidates <- list(
   hospital_code = c("hospital_code", "HospitalCode"),
   patient_id = c("patient_id", "PID"),
@@ -76,7 +76,7 @@ read_analysis_data <- function(path) {
   if (extension %in% c("xlsx", "xls")) {
     data <- as.data.frame(readxl::read_excel(path), stringsAsFactors = FALSE)
   } else if (extension %in% c("csv", "txt")) {
-    # Detect legacy pipe-delimited exports from the header.
+    # A pipe in the header marks an old export.
     first_line <- readLines(path, n = 1L, warn = FALSE)
     separator <- if (grepl("|", first_line, fixed = TRUE)) "|" else ","
     data <- as.data.frame(
@@ -92,11 +92,11 @@ read_analysis_data <- function(path) {
 
 normalize_input_columns <- function(data) {
   names(data) <- trimws(names(data))
-  # Remove index columns introduced by earlier pandas or R exports.
+  # Drop index junk written by pandas or R.
   index_columns <- grepl("^(\\.\\.\\.[0-9]+|Unnamed:|X$)", names(data))
   if (any(index_columns)) data <- data[, !index_columns, drop = FALSE]
 
-  # Keep standard names when present; otherwise use the first known alias.
+  # Keep current names. Otherwise take the first matching alias.
   for (target in names(legacy_column_candidates)) {
     if (target %in% names(data)) next
     candidates <- legacy_column_candidates[[target]]
@@ -133,7 +133,7 @@ as_binary_strict <- function(x, name) {
 derive_surgery_specialty <- function(code, cardiac_surgery) {
   text <- trimws(as.character(code))
   numeric_code <- suppressWarnings(as.numeric(text))
-  # Normalize decimal and compact ICD-9-CM codes to their two-digit category.
+  # Reduce decimal or compact ICD-9-CM codes to two-digit categories.
   major <- ifelse(
     grepl("\\.", text),
     floor(numeric_code),
@@ -148,7 +148,7 @@ derive_surgery_specialty <- function(code, cardiac_surgery) {
   specialty[major %in% 38:39] <- "vascular"
   specialty[major >= 30 & major <= 34] <- "thoracic"
   specialty[major >= 35 & major <= 37] <- "cardiac"
-  # The curated cardiac-surgery flag takes precedence over the procedure code.
+  # Trust the curated cardiac flag over the procedure code.
   specialty[cardiac_surgery == 1L] <- "cardiac"
   factor(
     specialty,
@@ -185,7 +185,7 @@ derive_analysis_variables <- function(data) {
     stop("Follow-up times cannot be negative.", call. = FALSE)
   }
 
-  # Retain the supplied binary AKI flag, but collapse reported stages above 3.
+  # `aki` wins. Warn on disagreement and clamp stages to 0..3.
   stage_any <- as.integer(data$aki_stage > 0)
   inconsistent <- !is.na(stage_any) & !is.na(data$aki) & stage_any != data$aki
   if (any(inconsistent)) {
@@ -193,7 +193,7 @@ derive_analysis_variables <- function(data) {
   }
   data$aki_stage <- as.integer(pmin(pmax(data$aki_stage, 0), 3))
 
-  # Left-closed intervals place boundary values in the higher category.
+  # Left-closed intervals put boundary values in the higher band.
   data$age_group <- cut(
     data$age,
     breaks = c(-Inf, 50, 60, 70, Inf),
@@ -219,7 +219,7 @@ derive_analysis_variables <- function(data) {
     levels = c("1", "2", "3", "4+")
   )
 
-  # Convert amount and duration fields to the binary exposures used by the models.
+  # Models need exposure flags, not raw amounts.
   data$rbc_transfusion <- as.integer(data$packed_rbc > 0)
   data$intraoperative_hypotension <- as.integer(data$time_below_map65_minutes > 0)
   data$surgery_group <- factor(
@@ -240,11 +240,11 @@ load_analysis_data <- function(path) {
 }
 
 sha256_file <- function(path) {
-  # Use the platform-native utility to fingerprint the exact input file.
+  # Hash the input with the operating system tool.
   command <- if (.Platform$OS.type == "windows") "certutil" else "sha256sum"
   if (.Platform$OS.type == "windows") {
     output <- suppressWarnings(system2(command, c("-hashfile", shQuote(normalizePath(path)), "SHA256"), stdout = TRUE, stderr = TRUE))
-    # certutil prints the ASCII hash on line 2; avoid locale-dependent status lines.
+    # The hash is on line 2. certutil status text depends on locale.
     hash <- if (length(output) >= 2L) gsub(" ", "", output[[2L]], fixed = TRUE) else character()
     if (!grepl("^[A-Fa-f0-9]{64}$", hash)) hash <- character()
   } else {

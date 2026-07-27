@@ -16,6 +16,6 @@ jobs:
         run: Rscript scripts/install_dependencies.R
       - name: Run tests
         run: Rscript tests/test_pipeline.R
-      # CI uses only the bundled synthetic fixture; protected data never enters Actions.
+      # Actions sees sample.xlsx only. Never upload the protected extract.
       - name: Run sample analysis
         run: Rscript run_all.R --mode=sample

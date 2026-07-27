@@ -1,4 +1,4 @@
-# Refuse sample mode unless every record uses the reserved synthetic ID prefix.
+# Sample mode accepts `SYNTH_` IDs. Nothing else.
 assert_synthetic_sample <- function(data) {
   if (!all(startsWith(as.character(data$patient_id), "SYNTH_"))) {
     stop("Sample mode accepts only records whose patient_id begins with `SYNTH_`.", call. = FALSE)
@@ -26,7 +26,7 @@ package_versions <- function(packages = required_packages()) {
   )
 }
 
-# Record the input fingerprint and software environment beside each analysis run.
+# Write the input hash and software versions next to the tables.
 run_metadata <- function(input_path, mode) {
   data.frame(
     field = c(

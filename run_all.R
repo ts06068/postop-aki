@@ -1,4 +1,4 @@
-# Resolve paths relative to this script so the pipeline can run from any directory.
+# Resolve from this file, not the caller's working directory.
 script_arguments <- commandArgs(trailingOnly = FALSE)
 script_file <- sub("^--file=", "", script_arguments[grepl("^--file=", script_arguments)])
 repo_root <- if (length(script_file)) {
@@ -7,7 +7,7 @@ repo_root <- if (length(script_file)) {
   normalizePath(getwd(), winslash = "/", mustWork = TRUE)
 }
 
-# Numbered module names define the order in which analysis functions are loaded.
+# Numeric filenames are the load order.
 for (file in sort(list.files(file.path(repo_root, "R"), pattern = "\\.R$", full.names = TRUE))) {
   source(file, local = .GlobalEnv)
 }
@@ -29,7 +29,7 @@ resolve_path <- function(path, root = repo_root) {
   normalizePath(file.path(root, path), winslash = "/", mustWork = FALSE)
 }
 
-# Keep factor coding and sample-mode random operations stable across runs.
+# Fix contrasts and RNG state before any model runs.
 options(contrasts = c("contr.treatment", "contr.poly"), warn = 1)
 set.seed(20250331)
 assert_packages()
@@ -38,7 +38,7 @@ cli <- parse_cli_arguments(commandArgs(trailingOnly = TRUE))
 mode <- tolower(cli$mode %||% "sample")
 if (!mode %in% c("sample", "full")) stop("`--mode` must be `sample` or `full`.", call. = FALSE)
 
-# Full mode never falls back to bundled data; it requires an external extract.
+# Full mode requires an external extract. Never fall back to sample.xlsx.
 default_input <- if (mode == "sample") {
   file.path(repo_root, "data", "sample.xlsx")
 } else {
@@ -60,7 +60,7 @@ message("Reading: ", input_path)
 data <- load_analysis_data(input_path)
 if (mode == "sample") assert_synthetic_sample(data)
 
-# Write lightweight summaries before running the more expensive models.
+# Write cheap summaries before expensive fits.
 counts <- cohort_counts(data)
 
 dir.create(output_path, recursive = TRUE, showWarnings = FALSE)
@@ -85,7 +85,7 @@ message("Fitting ICU competing-risk models...")
 icu_results <- fit_icu_competing_risk(data, mode)
 write_result_csv(icu_results, file.path(output_path, "icu_competing_risk.csv"))
 
-# Keep execution context beside the result tables for later inspection.
+# Record the run after every analysis finishes.
 write_result_csv(
   run_metadata(input_path, mode),
   file.path(output_path, "run_metadata.csv")

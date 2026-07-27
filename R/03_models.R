@@ -1,6 +1,6 @@
-# Model definitions for AKI risk, mortality, landmark, and ICU outcomes.
+# AKI risk, mortality, landmark, and ICU outcome models.
 full_adjustment_terms <- function(data, cohort = "overall", mode = "full") {
-  # Sample mode uses fewer terms to exercise model plumbing on 96 synthetic rows.
+  # The 96-row sample tests code paths. Do not overfit it.
   if (identical(mode, "sample")) {
     terms <- c("sex_male", "age", "bmi", "egfr", "asa_class", "cardiac_surgery")
   } else {
@@ -12,7 +12,7 @@ full_adjustment_terms <- function(data, cohort = "overall", mode = "full") {
       "intraoperative_hypotension", "cardiac_surgery"
     )
   }
-  # Surgery type is invariant within surgery-specific cohorts and would be singular.
+  # Drop surgery type inside a fixed surgery cohort. A constant term is useless.
   if (!identical(cohort, "overall")) terms <- setdiff(terms, "cardiac_surgery")
   intersect(terms, names(data))
 }
@@ -40,13 +40,13 @@ tidy_glm_fit <- function(fit, cohort, model, focus = NULL) {
   coefficients <- stats::coef(fit)
   standard_errors <- sqrt(diag(stats::vcov(fit)))
   keep <- names(coefficients) != "(Intercept)" & !is.na(coefficients) & !is.na(standard_errors)
-  # Factor variables expand to several coefficients that share the variable prefix.
+  # Factors emit several coefficients. Keep every matching level.
   if (!is.null(focus)) keep <- keep & coefficient_matches(names(coefficients), focus)
   coefficients <- coefficients[keep]
   standard_errors <- standard_errors[keep]
   if (!length(coefficients)) return(NULL)
 
-  # Use the fitted model frame so n and events reflect complete-case analysis.
+  # Count from the fitted frame. Anything else misstates complete-case n.
   model_frame <- stats::model.frame(fit)
   outcome <- stats::model.response(model_frame)
   data.frame(
@@ -70,7 +70,7 @@ fit_aki_risk_models <- function(data, mode = "full") {
   output <- list()
   output_index <- 1L
 
-  # Fit exposure-specific simple models, then reuse one joint fully adjusted fit.
+  # Fit simple models per exposure. Fit the joint model once per cohort.
   for (cohort in c("overall", "cardiac", "non_cardiac")) {
     cohort_data <- cohort_subset(data, cohort)
     full_terms <- full_adjustment_terms(cohort_data, cohort, mode)
@@ -113,7 +113,7 @@ fit_aki_risk_models <- function(data, mode = "full") {
   as.data.frame(data.table::rbindlist(output, fill = TRUE), stringsAsFactors = FALSE)
 }
 
-# Adjust for nonlinear calendar trends, with a smaller basis when years are sparse.
+# Use a smaller calendar spline when the data contain too few operation years.
 add_calendar_spline <- function(data) {
   probabilities <- c(0.05, 0.275, 0.50, 0.725, 0.95)
   knots <- as.numeric(stats::quantile(data$operation_year, probabilities, na.rm = TRUE, names = FALSE))
@@ -130,7 +130,7 @@ add_calendar_spline <- function(data) {
   cbind(data, as.data.frame(spline, stringsAsFactors = FALSE))
 }
 
-# Apply the 7-day landmark and administratively censor follow-up at five years.
+# Start at day 7. Stop at day 1825.
 prepare_mortality_data <- function(data, horizon_day = 1825, landmark_day = 7) {
   eligible <- is.finite(data$time_to_death_days) & data$time_to_death_days > landmark_day
   output <- droplevels(data[eligible, , drop = FALSE])
@@ -145,7 +145,7 @@ fit_extended_cox_one <- function(data, cohort = "overall", mode = "full") {
   cohort_data <- prepare_mortality_data(cohort_subset(data, cohort))
   adjustment_terms <- full_adjustment_terms(cohort_data, cohort, mode)
   spline_terms <- grep("^calendar_spline_", names(cohort_data), value = TRUE)
-  # AKI varies with log postoperative day; hospital strata get separate baselines.
+  # Model AKI by log(day). Give each hospital its own baseline hazard.
   right_hand_side <- c("aki", "tt(aki)", adjustment_terms, spline_terms, "strata(hospital_factor)")
   formula <- formula_from_terms(
     "survival::Surv(landmark_day, analysis_time, death_event)",
@@ -179,7 +179,7 @@ evaluate_extended_cox <- function(model_object, days = c(30, 90, 365, 1095, 1825
   interaction_index <- match("tt(aki)", names(coefficients))
   if (anyNA(c(aki_index, interaction_index))) stop("AKI time-interaction coefficients were not estimable.", call. = FALSE)
 
-  # Evaluate HR(day) with the full covariance matrix for the Wald confidence interval.
+  # Compute HR(day) and its Wald interval from the full covariance matrix.
   rows <- lapply(days, function(day) {
     contrast <- rep(0, length(coefficients))
     contrast[aki_index] <- 1
@@ -212,7 +212,7 @@ fit_time_varying_mortality <- function(data, mode = "full") {
 fit_one_year_landmark_one <- function(data, cohort = "overall", mode = "full") {
   assert_packages("survival")
   source_data <- cohort_subset(data, cohort)
-  # Patients censored before one year have unknown landmark survival status.
+  # Censoring before day 365 does not establish one-year survival.
   known_one_year <- source_data$time_to_death_days >= 365 | source_data$death == 1L
   weight_data <- droplevels(source_data[known_one_year, , drop = FALSE])
   weight_data$survived_one_year <- as.integer(
@@ -227,7 +227,7 @@ fit_one_year_landmark_one <- function(data, cohort = "overall", mode = "full") {
   survivors <- droplevels(weight_data[weight_data$survived_one_year == 1L, , drop = FALSE])
   predicted <- stats::predict(weight_model, newdata = survivors, type = "response")
   marginal <- mean(weight_data$survived_one_year)
-  # Stabilized inverse-survival weights reduce selection among one-year survivors.
+  # Stabilize inverse-survival weights. Floor p to avoid division blow-ups.
   survivors$survival_weight <- marginal / pmax(predicted, 1e-6)
   survivors$landmark_day <- 365
   survivors$analysis_time <- pmin(survivors$time_to_death_days, 1825)
@@ -235,7 +235,7 @@ fit_one_year_landmark_one <- function(data, cohort = "overall", mode = "full") {
   survivors <- add_calendar_spline(survivors)
 
   spline_terms <- grep("^calendar_spline_", names(survivors), value = TRUE)
-  # Hospital strata and patient clustering define the weighted late-period Cox model.
+  # Stratify by hospital. Cluster the robust variance by patient.
   formula <- formula_from_terms(
     "survival::Surv(landmark_day, analysis_time, death_event)",
     c("aki", adjustment_terms, spline_terms, "strata(hospital_factor)", "cluster(patient_id)")
@@ -273,7 +273,7 @@ fit_one_year_landmark_one <- function(data, cohort = "overall", mode = "full") {
 }
 
 fit_landmark_mortality <- function(data, mortality_results, mode = "full") {
-  # The early row is the extended-model contrast at day 365, not an interval average.
+  # This is the day-365 contrast, not an average over the first year.
   early <- mortality_results[mortality_results$day == 365, , drop = FALSE]
   early$interval <- "0_to_1_year"
   early <- early[, c("cohort", "interval", "estimate", "hazard_ratio", "conf_low", "conf_high", "p_value", "n", "events")]
@@ -283,7 +283,7 @@ fit_landmark_mortality <- function(data, mortality_results, mode = "full") {
   rbind(early, late)
 }
 
-# Encode ICU admission as event 1 and death as competing event 2 after day 7.
+# After day 7: 0=censoring, 1=ICU, 2=death.
 build_competing_endpoint <- function(data, horizon_day = 365, landmark_day = 7) {
   icu_event_time <- ifelse(data$icu_admission == 1L, data$time_to_icu_days, Inf)
   death_event_time <- ifelse(data$death == 1L, data$time_to_death_days, Inf)
@@ -292,7 +292,7 @@ build_competing_endpoint <- function(data, horizon_day = 365, landmark_day = 7) 
   censor_time <- pmin(icu_censor_time, death_censor_time, horizon_day, na.rm = TRUE)
   first_time <- pmin(icu_event_time, death_event_time, censor_time, horizon_day, na.rm = TRUE)
 
-  # Count an event only when it occurs at the observed first time; ICU wins exact ties.
+  # Use the first observed time. ICU wins an exact tie.
   status <- ifelse(
     is.finite(icu_event_time) & icu_event_time == first_time & icu_event_time <= death_event_time, 1L,
     ifelse(is.finite(death_event_time) & death_event_time == first_time, 2L, 0L)
@@ -309,21 +309,21 @@ fit_fine_gray_one <- function(data, cohort = "overall", mode = "full") {
   cohort_data <- build_competing_endpoint(cohort_subset(data, cohort))
   cohort_data <- add_calendar_spline(cohort_data)
   if (identical(mode, "sample")) {
-    # The small synthetic fixture checks endpoint and model plumbing only.
+    # Sample mode checks the endpoint and solver. AKI is enough.
     adjustment_terms <- character()
     spline_terms <- character()
     matrix_terms <- "aki"
   } else {
     adjustment_terms <- full_adjustment_terms(cohort_data, cohort, mode)
     spline_terms <- grep("^calendar_spline_", names(cohort_data), value = TRUE)
-    # Fine-Gray cannot stratify, so hospital enters through the design matrix.
+    # crr has no strata term. Put hospital in the design matrix.
     matrix_terms <- unique(c("aki", adjustment_terms, spline_terms, "hospital_factor"))
   }
   complete <- stats::complete.cases(cohort_data[, c("competing_time", "competing_status", matrix_terms), drop = FALSE])
   cohort_data <- droplevels(cohort_data[complete, , drop = FALSE])
   if (sum(cohort_data$competing_status == 1L) < 5L) stop("Too few ICU events for Fine-Gray analysis.", call. = FALSE)
 
-  # Drop cohort-invariant columns to avoid a singular intercept-free design.
+  # No intercept. Drop constants before crr sees a singular matrix.
   matrix_formula <- stats::as.formula(paste("~ 0 +", paste(matrix_terms, collapse = " + ")))
   covariate_matrix <- stats::model.matrix(matrix_formula, data = cohort_data)
   constant <- apply(covariate_matrix, 2L, function(x) length(unique(x)) <= 1L)
@@ -331,13 +331,13 @@ fit_fine_gray_one <- function(data, cohort = "overall", mode = "full") {
   aki_index <- match("aki", colnames(covariate_matrix))
   if (is.na(aki_index)) stop("AKI column is not estimable in Fine-Gray model.", call. = FALSE)
 
-  # Fit AKI-by-log-time first and retain it only when the Wald test is significant.
+  # Fit AKI by log(time) first. Keep it only when the Wald p-value is below 0.05.
   extended_fit <- cmprsk::crr(
     ftime = cohort_data$competing_time,
     fstatus = cohort_data$competing_status,
     cov1 = covariate_matrix,
     cov2 = matrix(cohort_data$aki, ncol = 1L, dimnames = list(NULL, "aki_log_time")),
-    # Add 7 to return landmark-relative time to the postoperative-day scale.
+    # Time starts at day 7. Add 7 before taking log(time).
     tf = function(t) matrix(log(t + 7), ncol = 1L),
     failcode = 1L,
     cencode = 0L,
@@ -380,7 +380,7 @@ evaluate_fine_gray <- function(model_object, days = c(30, 90, 365)) {
   covariance <- fit$var
   if (is.na(model_object$aki_index)) stop("AKI coefficient is absent from Fine-Gray model.", call. = FALSE)
 
-  # Report postoperative-day contrasts; event counts use landmark-relative time.
+  # Report postoperative days. Count events on the day-7-relative scale.
   rows <- lapply(days, function(day) {
     contrast <- rep(0, length(coefficients))
     contrast[model_object$aki_index] <- 1

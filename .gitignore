@@ -5,7 +5,7 @@
 renv/library/
 renv/staging/
 
-# Source data and generated analysis artefacts
+# Protected inputs and generated outputs
 data/raw/**
 data/private/**
 outputs/
@@ -15,12 +15,12 @@ outputs/
 *.rds
 *.rda
 
-# CSV files are ignored except for the input schema.
+# Ignore CSV files except the tracked schema.
 *.csv
 !data/data_dictionary.csv
 !data/sample.xlsx
 
-# Local editor and operating-system files
+# Editor and operating-system files
 .DS_Store
 Thumbs.db
 *.log
